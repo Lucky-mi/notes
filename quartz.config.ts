@@ -17,7 +17,7 @@ const config: QuartzConfig = {
     },
     locale: "zh-CN",
     baseUrl: "Lucky-mi.github.io/notes",
-    ignorePatterns: ["private", "templates", ".obsidian"],
+    ignorePatterns: ["private", "templates", ".obsidian","30_Coding_Projects/技术笔记/claude & gemini.md"],
     defaultDateType: "modified",
     theme: {
       fontOrigin: "googleFonts",
