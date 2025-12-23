@@ -1,195 +1,205 @@
 # garden-stats.ps1
-# YujiaMa's Garden 每日统计脚本
-# 使用方法: 在 quartz 目录下运行 .\garden-stats.ps1
+# YujiaMa's Garden Daily Stats
+# Usage: Run .\garden-stats.ps1 in quartz directory
 
 $ErrorActionPreference = "Continue"
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 颜色输出函数
 function Write-Color {
     param([string]$Text, [string]$Color = "White")
     Write-Host $Text -ForegroundColor $Color
 }
 
-Write-Color "`n🌱 YujiaMa's Garden 每日统计" "Green"
+Write-Color "`nYujiaMa's Garden Daily Stats" "Green"
 Write-Color "================================" "Green"
 
 $today = Get-Date -Format "yyyy-MM-dd"
 $todayDisplay = Get-Date -Format "MM.dd"
 
-# 1. 计算连续学习天数
-Write-Color "`n📅 计算连续学习天数..." "Cyan"
+# 1. Calculate streak
+Write-Color "`n[1/4] Calculating streak..." "Cyan"
 $streak = 0
 for ($i = 0; $i -lt 365; $i++) {
     $checkDate = (Get-Date).AddDays(-$i).ToString("yyyy-MM-dd")
-    $commits = git log --since="$checkDate 00:00:00" --until="$checkDate 23:59:59" --oneline -- content/ 2>$null | Measure-Object -Line
-    if ($commits.Lines -gt 0) {
+    $commits = git log --since="$checkDate 00:00:00" --until="$checkDate 23:59:59" --oneline -- content/ 2>$null
+    if ($commits) {
         $streak++
     } else {
         if ($i -eq 0) { continue }
         else { break }
     }
 }
-Write-Color "🔥 当前连续: $streak 天" "Yellow"
+Write-Color "Current streak: $streak days" "Yellow"
 
-# 2. 统计今日更新
-Write-Color "`n📝 统计今日更新..." "Cyan"
+# 2. Today's stats
+Write-Color "`n[2/4] Today's updates..." "Cyan"
 
 $todayCommits = git log --since="$today 00:00:00" --until="$today 23:59:59" --oneline -- content/ 2>$null
+$totalFiles = 0
+$insertions = 0
+$deletions = 0
+
 if ($todayCommits) {
     $firstCommit = (git log --since="$today 00:00:00" --until="$today 23:59:59" --reverse --format="%H" -- content/ | Select-Object -First 1)
     
-    try {
+    if ($firstCommit) {
         $diffOutput = git diff --stat "$firstCommit^..HEAD" -- content/ 2>$null
-    } catch {
-        $diffOutput = git diff --stat HEAD -- content/ 2>$null
-    }
-    
-    if ($diffOutput) {
-        $summaryLine = $diffOutput | Select-Object -Last 1
         
-        if ($summaryLine -match '(\d+) file') { $totalFiles = $matches[1] } else { $totalFiles = 0 }
-        if ($summaryLine -match '(\d+) insertion') { $insertions = $matches[1] } else { $insertions = 0 }
-        if ($summaryLine -match '(\d+) deletion') { $deletions = $matches[1] } else { $deletions = 0 }
-        
-        Write-Color "   📁 文件: $totalFiles" "White"
-        Write-Color "   ➕ 新增: +$insertions 行" "Green"
-        Write-Color "   ➖ 删除: -$deletions 行" "Red"
+        if ($diffOutput) {
+            $summaryLine = $diffOutput | Select-Object -Last 1
+            
+            if ($summaryLine -match '(\d+) file') { $totalFiles = [int]$matches[1] }
+            if ($summaryLine -match '(\d+) insertion') { $insertions = [int]$matches[1] }
+            if ($summaryLine -match '(\d+) deletion') { $deletions = [int]$matches[1] }
+            
+            Write-Color "   Files: $totalFiles" "White"
+            Write-Color "   Added: +$insertions lines" "Green"
+            Write-Color "   Deleted: -$deletions lines" "Red"
+        }
     }
 } else {
-    Write-Color "   今日暂无提交" "Gray"
-    $totalFiles = 0
-    $insertions = 0
-    $deletions = 0
+    Write-Color "   No commits today" "Gray"
 }
 
-# 3. 分科目统计
-Write-Color "`n📚 分科目统计..." "Cyan"
-
-$subjects = @(
-    @{path="content/10_CS_408/*网络*"; name="🌐 计网"},
-    @{path="content/10_CS_408/*操作系统*"; name="💻 OS"},
-    @{path="content/15_Classes/*并行*"; name="⚡ 并行"},
-    @{path="content/12_Math"; name="📐 数学"},
-    @{path="content/11_English"; name="🌏 英语"},
-    @{path="content/20_AI-Research"; name="🧠 AI"}
-)
+# 3. Subject breakdown
+Write-Color "`n[3/4] Subject breakdown..." "Cyan"
 
 $subjectStats = @()
-foreach ($subject in $subjects) {
-    if ($todayCommits -and $firstCommit) {
-        $subjectDiff = git diff --stat "$firstCommit^..HEAD" -- $subject.path 2>$null | Select-Object -Last 1
-        if ($subjectDiff -match '(\d+) insertion') {
-            $lines = $matches[1]
-            if ([int]$lines -gt 0) {
-                Write-Color "   $($subject.name): +$lines" "White"
-                $subjectStats += "$($subject.name) +$lines"
+if ($todayCommits -and $firstCommit) {
+    $subjects = @(
+        @{pattern="*Network*"; name="Network"},
+        @{pattern="*OS*"; name="OS"},
+        @{pattern="*Math*"; name="Math"},
+        @{pattern="*English*"; name="English"},
+        @{pattern="*AI*"; name="AI"},
+        @{pattern="*Parallel*"; name="Parallel"}
+    )
+    
+    # Get all changed files
+    $changedFiles = git diff --name-only "$firstCommit^..HEAD" -- content/ 2>$null
+    
+    if ($changedFiles) {
+        # Count by folder
+        $folderCounts = @{}
+        foreach ($file in $changedFiles) {
+            if ($file -match "content/([^/]+)/") {
+                $folder = $matches[1]
+                if (-not $folderCounts.ContainsKey($folder)) {
+                    $folderCounts[$folder] = 0
+                }
+                $folderCounts[$folder]++
             }
+        }
+        
+        foreach ($folder in $folderCounts.Keys | Sort-Object) {
+            $count = $folderCounts[$folder]
+            Write-Color "   $folder : $count files" "White"
+            $subjectStats += "$folder($count)"
         }
     }
 }
 
-# 4. 生成 CHANGELOG 条目
-Write-Color "`n📋 生成更新记录..." "Cyan"
+# 4. Generate changelog entry
+Write-Color "`n[4/4] Changelog entry..." "Cyan"
 
-if ([int]$insertions -gt 0) {
-    # 确定 emoji
-    if ([int]$insertions -gt 1000) { $emoji = "🔥" }
-    elseif ([int]$insertions -gt 500) { $emoji = "📚" }
-    elseif ([int]$insertions -gt 100) { $emoji = "✏️" }
-    else { $emoji = "🌱" }
+if ($insertions -gt 0) {
+    # Determine emoji
+    if ($insertions -gt 1000) { $emoji = "[FIRE]" }
+    elseif ($insertions -gt 500) { $emoji = "[BOOK]" }
+    elseif ($insertions -gt 100) { $emoji = "[EDIT]" }
+    else { $emoji = "[SEED]" }
     
-    # 获取更新的文件名
-    $updatedFiles = git diff --name-only "$firstCommit^..HEAD" -- content/*.md 2>$null | 
+    # Get updated file names
+    $updatedFiles = git diff --name-only "$firstCommit^..HEAD" -- content/ 2>$null | 
+        Where-Object { $_ -match "\.md$" } |
         ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_) } |
         Where-Object { $_ -ne "CHANGELOG" -and $_ -notmatch "^\." } |
         Select-Object -First 4
     
-    $noteNames = ($updatedFiles -join "、")
-    $noteCount = (git diff --name-only "$firstCommit^..HEAD" -- content/*.md 2>$null | Measure-Object -Line).Lines
+    $noteNames = ($updatedFiles -join ", ")
+    $noteCount = (git diff --name-only "$firstCommit^..HEAD" -- content/*.md 2>$null | Measure-Object).Count
     
     if ($noteCount -gt 4) {
-        $noteNames = "$noteNames 等${noteCount}篇"
+        $noteNames = "$noteNames + $($noteCount - 4) more"
     }
     
     if (-not $noteNames) {
-        $noteNames = "${totalFiles}个文件"
+        $noteNames = "$totalFiles files"
     }
     
     $changelogEntry = "| $todayDisplay | $emoji $noteNames | +$insertions | $totalFiles |"
     
-    Write-Color "`n✨ 今日更新记录:" "Green"
+    Write-Color "`nToday's changelog entry:" "Green"
     Write-Color $changelogEntry "Yellow"
     
-    # 复制到剪贴板
+    # Copy to clipboard
     $changelogEntry | Set-Clipboard
-    Write-Color "`n📋 已复制到剪贴板！粘贴到 CHANGELOG.md 即可" "Green"
+    Write-Color "`nCopied to clipboard! Paste into CHANGELOG.md" "Green"
 }
 
-# 5. 生成完整的今日总结
+# 5. Summary
 Write-Color "`n" "White"
 Write-Color "========================================" "Green"
-Write-Color "📊 YujiaMa's Garden 今日总结 ($todayDisplay)" "Green"
+Write-Color "SUMMARY - $todayDisplay" "Green"
 Write-Color "========================================" "Green"
-Write-Color "🔥 连续学习: $streak 天" "Yellow"
-if ([int]$insertions -gt 0) {
-    Write-Color "📝 今日更新: +$insertions 行 ($totalFiles 个文件)" "White"
+Write-Color "Streak: $streak days" "Yellow"
+if ($insertions -gt 0) {
+    Write-Color "Today: +$insertions lines ($totalFiles files)" "White"
     if ($subjectStats.Count -gt 0) {
-        Write-Color "📚 科目分布: $($subjectStats -join ', ')" "White"
+        Write-Color "Subjects: $($subjectStats -join ', ')" "White"
     }
 } else {
-    Write-Color "📝 今日暂无更新" "Gray"
+    Write-Color "Today: No updates yet" "Gray"
 }
 Write-Color "========================================`n" "Green"
 
-# 6. 询问是否自动更新 CHANGELOG
-if ([int]$insertions -gt 0) {
-    $response = Read-Host "是否自动更新 CHANGELOG.md? (y/n)"
+# 6. Ask to update CHANGELOG
+if ($insertions -gt 0) {
+    $response = Read-Host "Update CHANGELOG.md? (y/n)"
     if ($response -eq 'y' -or $response -eq 'Y') {
         $changelogPath = "content/CHANGELOG.md"
         
         if (-not (Test-Path $changelogPath)) {
-            Write-Color "创建新的 CHANGELOG.md..." "Cyan"
-            @"
+            Write-Color "Creating new CHANGELOG.md..." "Cyan"
+            $newContent = @"
 ---
-title: 📝 更新日志
----
-
-# YujiaMa's Garden 更新日志
-
-> 🤖 记录每日学习进度 | 🎯 目标: PKU 软微 2027
-
+title: Changelog
 ---
 
-## 📊 学习统计
+# YujiaMa's Garden Changelog
 
-🔥 **连续学习**: $streak 天
+> Daily learning progress | Target: PKU 2027
 
 ---
 
-## 📅 每日记录
+## Stats
 
-| 日期 | 更新内容 | 行数 | 文件 |
-| ---- | -------- | ---- | ---- |
+**Streak**: $streak days
+
+---
+
+## Daily Log
+
+| Date | Updates | Lines | Files |
+| ---- | ------- | ----- | ----- |
 $changelogEntry
-"@ | Out-File -FilePath $changelogPath -Encoding UTF8
+"@
+            $newContent | Out-File -FilePath $changelogPath -Encoding UTF8
         } else {
-            # 读取现有文件
             $content = Get-Content $changelogPath -Raw -Encoding UTF8
             
-            # 更新连续天数
-            $content = $content -replace '🔥 \*\*连续学习\*\*: \d+ 天', "🔥 **连续学习**: $streak 天"
+            # Update streak
+            $content = $content -replace '\*\*Streak\*\*: \d+ days', "**Streak**: $streak days"
             
-            # 删除今天已有的记录
-            $content = $content -replace "\| $todayDisplay \|[^\n]+\n", ""
+            # Remove today's existing entry
+            $content = $content -replace "\| $todayDisplay \|[^\r\n]+[\r\n]+", ""
             
-            # 在表头后插入新记录
-            $content = $content -replace '(\| ---- \| -------- \| ---- \| ---- \|)', "`$1`n$changelogEntry"
+            # Add new entry after table header
+            $content = $content -replace '(\| ---- \| ------- \| ----- \| ----- \|)', "`$1`r`n$changelogEntry"
             
             $content | Out-File -FilePath $changelogPath -Encoding UTF8 -NoNewline
         }
         
-        Write-Color "✅ CHANGELOG.md 已更新!" "Green"
-        Write-Color "现在可以运行: git add . && git commit -m 'update' && git push" "Cyan"
+        Write-Color "CHANGELOG.md updated!" "Green"
+        Write-Color "Now run: git add . ; git commit -m 'update' ; git push" "Cyan"
     }
 }
