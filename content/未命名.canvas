@@ -1,9 +1,0 @@
-{
-	"nodes":[
-		{"id":"dd195e8492a51981","x":-320,"y":-300,"width":400,"height":400,"type":"file","file":"10_CS_408/操作系统/死锁.md"},
-		{"id":"7c6e8012f7c6528f","x":240,"y":-180,"width":245,"height":50,"color":"6","type":"text","text":""}
-	],
-	"edges":[
-		{"id":"0ad27f12d6d88351","fromNode":"dd195e8492a51981","fromSide":"right","toNode":"7c6e8012f7c6528f","toSide":"left"}
-	]
-}
